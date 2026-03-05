@@ -1,0 +1,13 @@
+# SPA fallback: send all non-file requests to index.html so client-side routing works.
+# Required for routes like /en, /en/tools, /en/compress, /id, etc.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  # If the request is not for a real file or directory, serve index.html
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Optional: prevent directory listing
+Options -Indexes
