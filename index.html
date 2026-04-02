@@ -17,15 +17,29 @@
          Optional dev fallback: VITE_GA_MEASUREMENT_ID in .env -->
     <!-- Static fallbacks — overwritten at build time by cms-seo-inject plugin from CMS API,
          and again at runtime by React SeoHead from CMS API for regular users. -->
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index,follow" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Compress PDF" />
     <meta name="twitter:card" content="summary_large_image" />
     <title>Compress PDF</title>
-    <script type="module" crossorigin src="/assets/index-B1mKVi3W.js"></script>
+      <meta property="og:title" content="Compress PDF" />
+    <meta property="og:image" content="https://compresspdf.id/logos/compresspdf.png" />
+    <meta name="twitter:title" content="Compress PDF" />
+    <meta name="twitter:image" content="https://compresspdf.id/logos/compresspdf.png" />
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RYN4NFFZBR"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RYN4NFFZBR');
+</script>
+
+    <script type="module" crossorigin src="/assets/index-BTyypXMP.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-D_pBCK8Y.js">
     <link rel="stylesheet" crossorigin href="/assets/index-CtxnK9xi.css">
-      <link rel="modulepreload" href="/assets/index-B1mKVi3W.js" />
+      <link rel="modulepreload" href="/assets/index-BTyypXMP.js" />
   </head>
   <body>
     <div id="root"></div>
