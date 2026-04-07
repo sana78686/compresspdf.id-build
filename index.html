@@ -12,11 +12,9 @@
     <link rel="preconnect" href="https://flagcdn.com" crossorigin />
     <link rel="dns-prefetch" href="https://flagcdn.com" />
     <meta name="theme-color" content="#ffffff" />
-    <!-- SEO: (1) This file is the same for every URL in a SPA. “View page source” only shows what
-         is here before JavaScript runs. Home-page CMS meta is also baked in at build (vite
-         cms-seo-inject) using VITE_BUILD_SEO_LOCALE. (2) After load, React updates meta — see
-         src/components/SeoHead.jsx and DynamicSeoHead.jsx. Blog/page meta cannot appear in raw
-         view-source without server-side rendering. Configure CMS: Content manager → Home, SEO. -->
+    <!-- SEO note: One HTML file for all routes (normal for React). “View source” = this file only;
+         Google still reads meta after JS. Per-page + per-language meta and hreflang are set in JS
+         (SeoHead, HreflangLinks). Home meta is also filled at build (VITE_BUILD_SEO_LOCALE). -->
     <!-- Static fallbacks — overwritten at build time by cms-seo-inject plugin from CMS API,
          and again at runtime by React SeoHead from CMS API for regular users. -->
     <meta name="robots" content="index,nofollow" />
@@ -33,10 +31,10 @@
     <meta name="twitter:title" content="compress pdf OG" />
     <meta name="twitter:description" content="compress pdf" />
     <meta name="twitter:image" content="https://compresspdf.id/logos/compresspdf.png" />
-    <script type="module" crossorigin src="/assets/index-ClrGoM3p.js"></script>
+    <script type="module" crossorigin src="/assets/index-Di_STIQA.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-D_pBCK8Y.js">
     <link rel="stylesheet" crossorigin href="/assets/index-DXGGIdCg.css">
-      <link rel="modulepreload" href="/assets/index-ClrGoM3p.js" />
+      <link rel="modulepreload" href="/assets/index-Di_STIQA.js" />
   </head>
   <body>
     <div id="root"></div>
