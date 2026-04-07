@@ -12,21 +12,26 @@
     <link rel="preconnect" href="https://flagcdn.com" crossorigin />
     <link rel="dns-prefetch" href="https://flagcdn.com" />
     <meta name="theme-color" content="#ffffff" />
-    <!-- Meta title/description/OG and CMS &lt;head&gt; snippet are not duplicated here as React
-         components: see src/components/SeoHead.jsx (injects meta at runtime) and
-         src/components/DynamicSeoHead.jsx (home + compress routes: CMS SEO + head snippet + GA4).
-         Configure in CMS: Content manager → Home (head snippet), SEO → Analytics (GA4).
-         Optional dev fallback: VITE_GA_MEASUREMENT_ID in .env -->
+    <!-- SEO: (1) This file is the same for every URL in a SPA. “View page source” only shows what
+         is here before JavaScript runs. Home-page CMS meta is also baked in at build (vite
+         cms-seo-inject) using VITE_BUILD_SEO_LOCALE. (2) After load, React updates meta — see
+         src/components/SeoHead.jsx and DynamicSeoHead.jsx. Blog/page meta cannot appear in raw
+         view-source without server-side rendering. Configure CMS: Content manager → Home, SEO. -->
     <!-- Static fallbacks — overwritten at build time by cms-seo-inject plugin from CMS API,
          and again at runtime by React SeoHead from CMS API for regular users. -->
-    <meta name="robots" content="index,follow" />
+    <meta name="robots" content="index,nofollow" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Compress PDF" />
     <meta name="twitter:card" content="summary_large_image" />
-    <title>Compress PDF</title>
-      <meta property="og:title" content="Compress PDF" />
+    <title>Compress PDF [Free] | Online Compress PDF files</title>
+      <meta name="description" content="Compress pdf files in seconds to get in desire quality with low filesize. Quick and easy pdf compressor,easy to use, free and online, no signup, no watermark." />
+    <meta name="keywords" content="compresspdf,compress pdf Document ,pdf compress pdf,compress pdf 1mb,compress pdf size,reduce pdf size,compress pdf online,compress pdf free," />
+    <link rel="canonical" href="https://compresspdf.id" />
+    <meta property="og:title" content="compress pdf OG" />
+    <meta property="og:description" content="compress pdf" />
     <meta property="og:image" content="https://compresspdf.id/logos/compresspdf.png" />
-    <meta name="twitter:title" content="Compress PDF" />
+    <meta name="twitter:title" content="compress pdf OG" />
+    <meta name="twitter:description" content="compress pdf" />
     <meta name="twitter:image" content="https://compresspdf.id/logos/compresspdf.png" />
     <script type="module" crossorigin src="/assets/index-ClrGoM3p.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-D_pBCK8Y.js">
