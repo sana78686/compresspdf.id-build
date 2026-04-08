@@ -2,17 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=0.0.0" />
-    <link rel="alternate icon" type="image/png" href="/favicon.png?v=0.0.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0.0" />
+    <link rel="alternate icon" type="image/png" href="/favicon.png?v=1.0.0" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Preconnect to API origins for faster CMS JSON (match VITE_API_URL host in production builds). -->
-    <link rel="preconnect" href="https://portal.compresspdf.id" crossorigin />
-    <link rel="dns-prefetch" href="https://portal.compresspdf.id" />
+        <!-- Shell head: Vite env + optional extras (see .env.example). cms-seo-inject may override robots/meta for home. -->
     <link rel="dns-prefetch" href="https://app.apimstec.com" />
+    <link rel="preconnect" href="https://app.apimstec.com" crossorigin />
+    <link rel="dns-prefetch" href="https://compresspdf.id" />
+    <link rel="preconnect" href="https://compresspdf.id" crossorigin />
+    <link rel="prefetch" href="/cms-prefetch.json" as="fetch" type="application/json" />
     <link rel="preconnect" href="https://flagcdn.com" crossorigin />
     <link rel="dns-prefetch" href="https://flagcdn.com" />
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
     <meta name="theme-color" content="#ffffff" />
-    <!-- SEO: SPA shell — per-route title/meta come from React (SeoHead) after load. Build injects home SEO from CMS (VITE_BUILD_SEO_LOCALE). -->
+    <!-- SEO: SPA shell; route-level meta from React. Build injects home meta from CMS when VITE_BUILD_SEO_LOCALE is set. -->
     <meta name="robots" content="index,follow" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -23,9 +27,11 @@
     <link rel="canonical" href="https://compresspdf.id" />
     <meta property="og:title" content="Compress PDF Files Online for Free | Fast &amp; Easy Tool" />
     <meta property="og:description" content="Compress PDF files online for free. Reduce file size instantly without losing quality. Fast, secure, and easy to use." />
+    <meta property="og:image" content="https://compresspdf.id/cms-uploads/compresspdf.id/compresspdf.id-gemini-generated-image-tzz9ntzz9ntzz9nt-etp8pe.png" />
     <meta property="og:site_name" content="Compress PDF" />
     <meta name="twitter:title" content="Compress PDF Files Online for Free | Fast &amp; Easy Tool" />
     <meta name="twitter:description" content="Compress PDF files online for free. Reduce file size instantly without losing quality. Fast, secure, and easy to use." />
+    <meta name="twitter:image" content="https://compresspdf.id/cms-uploads/compresspdf.id/compresspdf.id-gemini-generated-image-tzz9ntzz9ntzz9nt-etp8pe.png" />
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-RYN4NFFZBR"></script>
 <script>
@@ -36,10 +42,10 @@
   gtag('config', 'G-RYN4NFFZBR');
 </script>
 
-    <script type="module" crossorigin src="/assets/index-oi3dEODg.js"></script>
+    <script type="module" crossorigin src="/assets/index-Kxepj4eo.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-D_pBCK8Y.js">
     <link rel="stylesheet" crossorigin href="/assets/index-DXGGIdCg.css">
-      <link rel="modulepreload" href="/assets/index-oi3dEODg.js" />
+      <link rel="modulepreload" href="/assets/index-Kxepj4eo.js" />
   </head>
   <body>
     <div id="root"></div>
