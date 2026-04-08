@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="alternate icon" type="image/png" href="/logos/compresspdf-favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=0.0.0" />
+    <link rel="alternate icon" type="image/png" href="/favicon.png?v=0.0.0" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Preconnect to API origins for faster CMS JSON (match VITE_API_URL host in production builds). -->
     <link rel="preconnect" href="https://portal.compresspdf.id" crossorigin />
@@ -12,29 +12,34 @@
     <link rel="preconnect" href="https://flagcdn.com" crossorigin />
     <link rel="dns-prefetch" href="https://flagcdn.com" />
     <meta name="theme-color" content="#ffffff" />
-    <!-- SEO note: One HTML file for all routes (normal for React). “View source” = this file only;
-         Google still reads meta after JS. Per-page + per-language meta and hreflang are set in JS
-         (SeoHead, HreflangLinks). Home meta is also filled at build (VITE_BUILD_SEO_LOCALE). -->
-    <!-- Static fallbacks — overwritten at build time by cms-seo-inject plugin from CMS API,
-         and again at runtime by React SeoHead from CMS API for regular users. -->
+    <!-- SEO: SPA shell — per-route title/meta come from React (SeoHead) after load. Build injects home SEO from CMS (VITE_BUILD_SEO_LOCALE). -->
     <meta name="robots" content="index,follow" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Compress PDF" />
     <meta name="twitter:card" content="summary_large_image" />
     <title>Compress PDF [Free] | Online Compress PDF files</title>
-      <meta name="description" content="Compress pdf files in seconds to get in desire quality with low filesize. Quick and easy pdf compressor,easy to use, free and online, no signup, no watermark." />
+      <meta name="title" content="Compress PDF [Free] | Online Compress PDF files" />
+    <meta name="description" content="Compress pdf files in seconds to get in desire quality with low filesize. Quick and easy pdf compressor,easy to use, free and online, no signup, no watermark." />
     <meta name="keywords" content="compresspdf,compress pdf Document ,pdf compress pdf,compress pdf 1mb,compress pdf size,reduce pdf size,compress pdf online,compress pdf free," />
     <link rel="canonical" href="https://compresspdf.id" />
     <meta property="og:title" content="Compress PDF Files Online for Free | Fast &amp; Easy Tool" />
     <meta property="og:description" content="Compress PDF files online for free. Reduce file size instantly without losing quality. Fast, secure, and easy to use." />
-    <meta property="og:image" content="https://compresspdf.id/logos/compresspdf.png" />
+    <meta property="og:site_name" content="Compress PDF" />
     <meta name="twitter:title" content="Compress PDF Files Online for Free | Fast &amp; Easy Tool" />
     <meta name="twitter:description" content="Compress PDF files online for free. Reduce file size instantly without losing quality. Fast, secure, and easy to use." />
-    <meta name="twitter:image" content="https://compresspdf.id/logos/compresspdf.png" />
-    <script type="module" crossorigin src="/assets/index-NZhtsVJr.js"></script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RYN4NFFZBR"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-RYN4NFFZBR');
+</script>
+
+    <script type="module" crossorigin src="/assets/index-oi3dEODg.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-D_pBCK8Y.js">
     <link rel="stylesheet" crossorigin href="/assets/index-DXGGIdCg.css">
-      <link rel="modulepreload" href="/assets/index-NZhtsVJr.js" />
+      <link rel="modulepreload" href="/assets/index-oi3dEODg.js" />
   </head>
   <body>
     <div id="root"></div>
