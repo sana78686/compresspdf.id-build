@@ -1,13 +1,41 @@
-# SPA fallback: send all non-file requests to index.html so client-side routing works.
-# Required for routes like /en, /en/tools, /en/compress, /id, etc.
+# SPA fallback with SEO prerender.
+# Static files (JS, CSS, images, fonts) are served directly by Apache.
+# All other requests go through seo-prerender.php which injects correct
+# per-page meta tags into index.html before serving.
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
-  # If the request is not for a real file or directory, serve index.html
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule . /index.html [L]
+
+  # Serve real files directly (JS, CSS, images, fonts, etc.)
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule . - [L]
+
+  # Serve real directories directly
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule . - [L]
+
+  # Everything else → PHP prerender (injects CMS meta into index.html)
+  RewriteRule . /seo-prerender.php [L]
 </IfModule>
 
-# Optional: prevent directory listing
+# Prevent directory listing
 Options -Indexes
+
+# Block access to the cache directory
+<IfModule mod_rewrite.c>
+  RewriteRule ^_seo_cache/ - [F,L]
+</IfModule>
+
+# Cache static assets aggressively
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType font/woff "access plus 1 year"
+</IfModule>
