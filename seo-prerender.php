@@ -192,16 +192,23 @@ function plainText(string $html): string
 
 function buildMetaTags(string $routeType, ?array $data, string $locale, string $origin, string $path): array
 {
+    $OG_LOCALE_MAP = ['id' => 'id_ID', 'en' => 'en_US'];
+
     $tags = [
-        'title'       => '',
-        'description' => '',
-        'robots'      => 'index, follow',
-        'canonical'   => $origin . $path,
-        'og_title'    => '',
-        'og_desc'     => '',
-        'og_image'    => '',
-        'og_type'     => 'website',
-        'keywords'    => '',
+        'title'              => '',
+        'description'        => '',
+        'robots'             => 'index, follow',
+        'canonical'          => $origin . $path,
+        'og_title'           => '',
+        'og_desc'            => '',
+        'og_image'           => '',
+        'og_type'            => 'website',
+        'og_locale'          => $OG_LOCALE_MAP[$locale] ?? $locale,
+        'og_site_name'       => 'Compress PDF',
+        'keywords'           => '',
+        'article_published'  => '',
+        'article_modified'   => '',
+        'article_author'     => '',
     ];
 
     if (!$data || (!isset($data['title']) && !isset($data['meta_title']) && !isset($data['content']))) {
@@ -244,6 +251,7 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
             $tags['og_type']     = 'article';
             $tags['title']       = trim($data['meta_title'] ?? $data['title'] ?? '');
             $desc = trim($data['meta_description'] ?? '');
+            if (!$desc) $desc = trim($data['og_description'] ?? '');
             if (!$desc && !empty($data['excerpt'])) $desc = trim($data['excerpt']);
             if (!$desc && !empty($data['content']))  $desc = mb_substr(plainText($data['content']), 0, 160);
             $tags['description'] = $desc;
@@ -251,7 +259,10 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
             $tags['robots']      = trim($data['meta_robots'] ?? '') ?: 'index, follow';
             $tags['og_title']    = trim($data['og_title'] ?? '') ?: $tags['title'];
             $tags['og_desc']     = trim($data['og_description'] ?? '') ?: $tags['description'];
-            $tags['og_image']    = trim($data['og_image'] ?? $data['image'] ?? '');
+            $tags['og_image']    = trim($data['og_image'] ?? $data['image'] ?? $data['featured_image'] ?? '');
+            $tags['article_published'] = trim($data['published_at'] ?? $data['created_at'] ?? '');
+            $tags['article_modified']  = trim($data['updated_at'] ?? '');
+            $tags['article_author']    = trim($data['author'] ?? $data['author_name'] ?? '');
             if (!empty($data['canonical_url'])) {
                 $tags['canonical'] = trim($data['canonical_url']);
             }
@@ -260,6 +271,7 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
         case 'page':
             $tags['title']       = trim($data['meta_title'] ?? $data['title'] ?? '');
             $desc = trim($data['meta_description'] ?? '');
+            if (!$desc) $desc = trim($data['og_description'] ?? '');
             if (!$desc && !empty($data['content'])) $desc = mb_substr(plainText($data['content']), 0, 160);
             $tags['description'] = $desc;
             $tags['keywords']    = trim($data['meta_keywords'] ?? '');
@@ -281,6 +293,10 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
             $tags['og_desc']  = $tags['description'];
             break;
     }
+
+    // Cross-fill: ensure description and og_desc never disagree
+    if (!$tags['description'] && $tags['og_desc']) $tags['description'] = $tags['og_desc'];
+    if (!$tags['og_desc'] && $tags['description']) $tags['og_desc'] = $tags['description'];
 
     return $tags;
 }
@@ -309,11 +325,21 @@ function injectMetaIntoHtml(string $html, array $tags): string
     if ($tags['description']) $inject[] = '<meta name="description" content="' . esc($tags['description']) . '" />';
     if ($tags['keywords'])    $inject[] = '<meta name="keywords" content="' . esc($tags['keywords']) . '" />';
     if ($tags['canonical'])   $inject[] = '<link rel="canonical" href="' . esc($tags['canonical']) . '" />';
+
+    // OG tags
     if ($tags['og_title'])    $inject[] = '<meta property="og:title" content="' . esc($tags['og_title']) . '" />';
     if ($tags['og_desc'])     $inject[] = '<meta property="og:description" content="' . esc($tags['og_desc']) . '" />';
     if ($tags['og_image'])    $inject[] = '<meta property="og:image" content="' . esc($tags['og_image']) . '" />';
     $inject[] = '<meta property="og:url" content="' . esc($tags['canonical']) . '" />';
+    if (!empty($tags['og_site_name'])) $inject[] = '<meta property="og:site_name" content="' . esc($tags['og_site_name']) . '" />';
+    if (!empty($tags['og_locale']))    $inject[] = '<meta property="og:locale" content="' . esc($tags['og_locale']) . '" />';
 
+    // Article-specific
+    if (!empty($tags['article_published'])) $inject[] = '<meta property="article:published_time" content="' . esc($tags['article_published']) . '" />';
+    if (!empty($tags['article_modified']))  $inject[] = '<meta property="article:modified_time" content="' . esc($tags['article_modified']) . '" />';
+    if (!empty($tags['article_author']))    $inject[] = '<meta property="article:author" content="' . esc($tags['article_author']) . '" />';
+
+    // Twitter tags
     if ($tags['og_title'])    $inject[] = '<meta name="twitter:title" content="' . esc($tags['og_title']) . '" />';
     if ($tags['og_desc'])     $inject[] = '<meta name="twitter:description" content="' . esc($tags['og_desc']) . '" />';
     if ($tags['og_image'])    $inject[] = '<meta name="twitter:image" content="' . esc($tags['og_image']) . '" />';
