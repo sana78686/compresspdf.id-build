@@ -30,20 +30,21 @@ if (!file_exists($indexPath)) {
 }
 $html = file_get_contents($indexPath);
 
+try {
+
 // ── Parse route ─────────────────────────────────────────────────────────────
-$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+$path = parse_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/', PHP_URL_PATH);
 $path = '/' . ltrim($path, '/');
 
-// Default locale is 'id' (no URL prefix). Non-default locales use /{lang}/...
 $DEFAULT_LOCALE = 'id';
 $locale = $DEFAULT_LOCALE;
 $routeSuffix = $path;
 
-if (preg_match('#^/([a-z]{2})(?:/(.*))?$#', $path, $m) && $m[1] !== $DEFAULT_LOCALE) {
+if (preg_match('#^/([a-z]{2})(?:/(.*))?$#', $path, $m) && isset($m[1]) && $m[1] !== $DEFAULT_LOCALE) {
     $locale = $m[1];
-    $routeSuffix = '/' . ($m[2] ?? '');
+    $routeSuffix = '/' . (isset($m[2]) ? $m[2] : '');
 } elseif (preg_match('#^/id(?:/(.*))?$#', $path, $m)) {
-    $routeSuffix = '/' . ($m[1] ?? '');
+    $routeSuffix = '/' . (isset($m[1]) ? $m[1] : '');
 }
 
 $routeType = 'home';
@@ -95,11 +96,26 @@ if ($apiPath !== '') {
     $meta = fetchCmsData($CMS_API_BASE, $SITE_DOMAIN, $apiPath, $locale, $CACHE_DIR, $CACHE_TTL);
 }
 
-// ── Build meta tags ─────────────────────────────────────────────────────────
-$tags = buildMetaTags($routeType, $meta, $locale, $SITE_ORIGIN, $path);
+// ── Debug mode ──────────────────────────────────────────────────────────────
+if (!empty($_GET['_seo_debug'])) {
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode(array(
+        'route_type' => $routeType,
+        'locale'     => $locale,
+        'slug'       => $slug,
+        'api_path'   => $apiPath,
+        'api_data'   => $meta,
+    ), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    exit;
+}
 
-// ── Inject into HTML ────────────────────────────────────────────────────────
+// ── Build & inject meta tags ────────────────────────────────────────────────
+$tags = buildMetaTags($routeType, $meta, $locale, $SITE_ORIGIN, $path);
 $html = injectMetaIntoHtml($html, $tags);
+
+} catch (Exception $e) {
+    // On any error, serve the raw SPA shell so the page never breaks
+}
 
 header('Content-Type: text/html; charset=UTF-8');
 echo $html;
@@ -110,7 +126,7 @@ exit;
 // Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
-function fetchCmsData(string $apiBase, string $domain, string $apiPath, string $locale, string $cacheDir, int $ttl): ?array
+function fetchCmsData($apiBase, $domain, $apiPath, $locale, $cacheDir, $ttl)
 {
     $cacheKey = md5($domain . $apiPath . $locale);
     $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
@@ -120,34 +136,33 @@ function fetchCmsData(string $apiBase, string $domain, string $apiPath, string $
         if (is_array($cached) && !isset($cached['_fetch_error'])) return $cached;
     }
 
-    $sslOpts = ['verify_peer' => true, 'verify_peer_name' => true];
-
-    $urls = [
-        [
-            'url'     => rtrim($apiBase, '/') . '/' . $domain . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
-            'header'  => "Accept: application/json\r\n",
-        ],
-        [
-            'url'     => rtrim($apiBase, '/') . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
-            'header'  => "Accept: application/json\r\nX-Domain: {$domain}\r\n",
-        ],
-    ];
+    $urls = array(
+        array(
+            'url'    => rtrim($apiBase, '/') . '/' . $domain . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
+            'header' => "Accept: application/json\r\n",
+        ),
+        array(
+            'url'    => rtrim($apiBase, '/') . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
+            'header' => "Accept: application/json\r\nX-Domain: {$domain}\r\n",
+        ),
+    );
 
     $data = null;
     foreach ($urls as $attempt) {
-        $ctx = stream_context_create([
-            'http' => [
+        $ctx = stream_context_create(array(
+            'http' => array(
                 'method'        => 'GET',
                 'header'        => $attempt['header'],
                 'timeout'       => 5,
                 'ignore_errors' => true,
-            ],
-            'ssl' => $sslOpts,
-        ]);
+            ),
+            'ssl' => array('verify_peer' => true, 'verify_peer_name' => true),
+        ));
 
+        $http_response_header = array();
         $body = @file_get_contents($attempt['url'], false, $ctx);
 
-        $status = httpStatusFromHeaders($http_response_header ?? []);
+        $status = httpStatusFromHeaders($http_response_header);
 
         if ($body === false || $status >= 400) {
             continue;
@@ -170,8 +185,9 @@ function fetchCmsData(string $apiBase, string $domain, string $apiPath, string $
     return $data;
 }
 
-function httpStatusFromHeaders(array $headers): int
+function httpStatusFromHeaders($headers)
 {
+    if (!is_array($headers)) return 0;
     foreach ($headers as $h) {
         if (preg_match('#^HTTP/[\d.]+\s+(\d{3})#i', $h, $m)) {
             return (int) $m[1];
@@ -180,21 +196,26 @@ function httpStatusFromHeaders(array $headers): int
     return 0;
 }
 
-function esc(string $s): string
+function g($arr, $key)
 {
-    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    return (is_array($arr) && isset($arr[$key])) ? (string)$arr[$key] : '';
 }
 
-function plainText(string $html): string
+function esc($s)
 {
-    return trim(preg_replace('/\s+/', ' ', strip_tags($html)));
+    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
-function buildMetaTags(string $routeType, ?array $data, string $locale, string $origin, string $path): array
+function plainText($html)
 {
-    $OG_LOCALE_MAP = ['id' => 'id_ID', 'en' => 'en_US'];
+    return trim(preg_replace('/\s+/', ' ', strip_tags((string)$html)));
+}
 
-    $tags = [
+function buildMetaTags($routeType, $data, $locale, $origin, $path)
+{
+    $OG_LOCALE_MAP = array('id' => 'id_ID', 'en' => 'en_US');
+
+    $tags = array(
         'title'              => '',
         'description'        => '',
         'robots'             => 'index, follow',
@@ -203,13 +224,13 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
         'og_desc'            => '',
         'og_image'           => '',
         'og_type'            => 'website',
-        'og_locale'          => $OG_LOCALE_MAP[$locale] ?? $locale,
+        'og_locale'          => isset($OG_LOCALE_MAP[$locale]) ? $OG_LOCALE_MAP[$locale] : $locale,
         'og_site_name'       => 'Compress PDF',
         'keywords'           => '',
         'article_published'  => '',
         'article_modified'   => '',
         'article_author'     => '',
-    ];
+    );
 
     if (!$data || (!isset($data['title']) && !isset($data['meta_title']) && !isset($data['content']))) {
         switch ($routeType) {
@@ -235,13 +256,13 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
 
     switch ($routeType) {
         case 'home':
-            $tags['title']       = trim($data['meta_title'] ?? '');
-            $tags['description'] = trim($data['meta_description'] ?? '');
-            $tags['keywords']    = trim($data['meta_keywords'] ?? '');
-            $tags['robots']      = trim($data['meta_robots'] ?? '') ?: 'index, follow';
-            $tags['og_title']    = trim($data['og_title'] ?? '') ?: $tags['title'];
-            $tags['og_desc']     = trim($data['og_description'] ?? '') ?: $tags['description'];
-            $tags['og_image']    = trim($data['og_image'] ?? '');
+            $tags['title']       = trim(g($data,'meta_title'));
+            $tags['description'] = trim(g($data,'meta_description'));
+            $tags['keywords']    = trim(g($data,'meta_keywords'));
+            $tags['robots']      = trim(g($data,'meta_robots')) ?: 'index, follow';
+            $tags['og_title']    = trim(g($data,'og_title')) ?: $tags['title'];
+            $tags['og_desc']     = trim(g($data,'og_description')) ?: $tags['description'];
+            $tags['og_image']    = trim(g($data,'og_image'));
             if (!empty($data['canonical_url'])) {
                 $tags['canonical'] = trim($data['canonical_url']);
             }
@@ -249,43 +270,44 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
 
         case 'blog':
             $tags['og_type']     = 'article';
-            $tags['title']       = trim($data['meta_title'] ?? $data['title'] ?? '');
-            $desc = trim($data['meta_description'] ?? '');
-            if (!$desc) $desc = trim($data['og_description'] ?? '');
-            if (!$desc && !empty($data['excerpt'])) $desc = trim($data['excerpt']);
-            if (!$desc && !empty($data['content']))  $desc = mb_substr(plainText($data['content']), 0, 160);
+            $tags['title']       = trim(g($data,'meta_title') ?: g($data,'title'));
+            $desc = trim(g($data,'meta_description'));
+            if (!$desc) $desc = trim(g($data,'og_description'));
+            if (!$desc) $desc = trim(g($data,'excerpt'));
+            if (!$desc && !empty($data['content'])) $desc = mb_substr(plainText($data['content']), 0, 160);
             $tags['description'] = $desc;
-            $tags['keywords']    = trim($data['meta_keywords'] ?? '');
-            $tags['robots']      = trim($data['meta_robots'] ?? '') ?: 'index, follow';
-            $tags['og_title']    = trim($data['og_title'] ?? '') ?: $tags['title'];
-            $tags['og_desc']     = trim($data['og_description'] ?? '') ?: $tags['description'];
-            $tags['og_image']    = trim($data['og_image'] ?? $data['image'] ?? $data['featured_image'] ?? '');
-            $tags['article_published'] = trim($data['published_at'] ?? $data['created_at'] ?? '');
-            $tags['article_modified']  = trim($data['updated_at'] ?? '');
-            $tags['article_author']    = trim($data['author'] ?? $data['author_name'] ?? '');
+            $tags['keywords']    = trim(g($data,'meta_keywords'));
+            $tags['robots']      = trim(g($data,'meta_robots')) ?: 'index, follow';
+            $tags['og_title']    = trim(g($data,'og_title')) ?: $tags['title'];
+            $tags['og_desc']     = trim(g($data,'og_description')) ?: $tags['description'];
+            $tags['og_image']    = trim(g($data,'og_image') ?: g($data,'image') ?: g($data,'featured_image'));
+            $tags['article_published'] = trim(g($data,'published_at') ?: g($data,'created_at'));
+            $tags['article_modified']  = trim(g($data,'updated_at'));
+            $authorRaw = isset($data['author']) ? $data['author'] : '';
+            $tags['article_author'] = is_array($authorRaw) ? trim(g($authorRaw,'name')) : trim((string)$authorRaw);
             if (!empty($data['canonical_url'])) {
                 $tags['canonical'] = trim($data['canonical_url']);
             }
             break;
 
         case 'page':
-            $tags['title']       = trim($data['meta_title'] ?? $data['title'] ?? '');
-            $desc = trim($data['meta_description'] ?? '');
-            if (!$desc) $desc = trim($data['og_description'] ?? '');
+            $tags['title']       = trim(g($data,'meta_title') ?: g($data,'title'));
+            $desc = trim(g($data,'meta_description'));
+            if (!$desc) $desc = trim(g($data,'og_description'));
             if (!$desc && !empty($data['content'])) $desc = mb_substr(plainText($data['content']), 0, 160);
             $tags['description'] = $desc;
-            $tags['keywords']    = trim($data['meta_keywords'] ?? '');
-            $tags['robots']      = trim($data['meta_robots'] ?? '') ?: 'index, follow';
-            $tags['og_title']    = trim($data['og_title'] ?? '') ?: $tags['title'];
-            $tags['og_desc']     = trim($data['og_description'] ?? '') ?: $tags['description'];
-            $tags['og_image']    = trim($data['og_image'] ?? '');
+            $tags['keywords']    = trim(g($data,'meta_keywords'));
+            $tags['robots']      = trim(g($data,'meta_robots')) ?: 'index, follow';
+            $tags['og_title']    = trim(g($data,'og_title')) ?: $tags['title'];
+            $tags['og_desc']     = trim(g($data,'og_description')) ?: $tags['description'];
+            $tags['og_image']    = trim(g($data,'og_image'));
             if (!empty($data['canonical_url'])) {
                 $tags['canonical'] = trim($data['canonical_url']);
             }
             break;
 
         case 'legal':
-            $tags['title']       = trim($data['title'] ?? '');
+            $tags['title']       = trim(g($data,'title'));
             if (!empty($data['content'])) {
                 $tags['description'] = mb_substr(plainText($data['content']), 0, 160);
             }
@@ -301,7 +323,7 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
     return $tags;
 }
 
-function injectMetaIntoHtml(string $html, array $tags): string
+function injectMetaIntoHtml($html, $tags)
 {
     $title = esc($tags['title']);
     $html = preg_replace('/<title>[^<]*<\/title>/', '<title>' . $title . '</title>', $html);
@@ -320,7 +342,7 @@ function injectMetaIntoHtml(string $html, array $tags): string
         $html
     );
 
-    $inject = [];
+    $inject = array();
     if ($tags['title'])       $inject[] = '<meta name="title" content="' . esc($tags['title']) . '" />';
     if ($tags['description']) $inject[] = '<meta name="description" content="' . esc($tags['description']) . '" />';
     if ($tags['keywords'])    $inject[] = '<meta name="keywords" content="' . esc($tags['keywords']) . '" />';
