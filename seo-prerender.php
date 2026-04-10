@@ -34,32 +34,39 @@ $html = file_get_contents($indexPath);
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $path = '/' . ltrim($path, '/');
 
-$locale = 'en';
-if (preg_match('#^/([a-z]{2})(?:/|$)#', $path, $m)) {
+// Default locale is 'id' (no URL prefix). Non-default locales use /{lang}/...
+$DEFAULT_LOCALE = 'id';
+$locale = $DEFAULT_LOCALE;
+$routeSuffix = $path;
+
+if (preg_match('#^/([a-z]{2})(?:/(.*))?$#', $path, $m) && $m[1] !== $DEFAULT_LOCALE) {
     $locale = $m[1];
+    $routeSuffix = '/' . ($m[2] ?? '');
+} elseif (preg_match('#^/id(?:/(.*))?$#', $path, $m)) {
+    $routeSuffix = '/' . ($m[1] ?? '');
 }
 
 $routeType = 'home';
 $slug      = '';
 
-if (preg_match('#^/[a-z]{2}/blog/([^/?]+)#', $path, $m)) {
+if (preg_match('#^/blog/([^/?]+)#', $routeSuffix, $m)) {
     $routeType = 'blog';
     $slug = urldecode($m[1]);
-} elseif (preg_match('#^/[a-z]{2}/blog/?$#', $path)) {
+} elseif (preg_match('#^/blog/?$#', $routeSuffix)) {
     $routeType = 'blog-list';
-} elseif (preg_match('#^/[a-z]{2}/page/([^/?]+)#', $path, $m)) {
+} elseif (preg_match('#^/page/([^/?]+)#', $routeSuffix, $m)) {
     $routeType = 'page';
     $slug = urldecode($m[1]);
-} elseif (preg_match('#^/[a-z]{2}/legal/([^/?]+)#', $path, $m)) {
+} elseif (preg_match('#^/legal/([^/?]+)#', $routeSuffix, $m)) {
     $routeType = 'legal';
     $slug = urldecode($m[1]);
-} elseif (preg_match('#^/[a-z]{2}/contact#', $path)) {
+} elseif (preg_match('#^/contact#', $routeSuffix)) {
     $routeType = 'contact';
-} elseif (preg_match('#^/[a-z]{2}/compress#', $path)) {
+} elseif (preg_match('#^/compress#', $routeSuffix)) {
     $routeType = 'tool';
-} elseif (preg_match('#^/[a-z]{2}/tools#', $path)) {
+} elseif (preg_match('#^/tools#', $routeSuffix)) {
     $routeType = 'tools';
-} elseif (preg_match('#^/[a-z]{2}/?$#', $path) || $path === '/') {
+} elseif ($routeSuffix === '/' || $routeSuffix === '') {
     $routeType = 'home';
 }
 
@@ -110,40 +117,50 @@ function fetchCmsData(string $apiBase, string $domain, string $apiPath, string $
 
     if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $ttl) {
         $cached = json_decode(file_get_contents($cacheFile), true);
-        if (is_array($cached)) return $cached;
+        if (is_array($cached) && !isset($cached['_fetch_error'])) return $cached;
     }
 
-    $url = rtrim($apiBase, '/') . '/' . $domain . '/api/public' . $apiPath . '?locale=' . urlencode($locale);
+    $sslOpts = ['verify_peer' => true, 'verify_peer_name' => true];
 
-    $ctx = stream_context_create([
-        'http' => [
-            'method'  => 'GET',
+    $urls = [
+        [
+            'url'     => rtrim($apiBase, '/') . '/' . $domain . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
             'header'  => "Accept: application/json\r\n",
-            'timeout' => 5,
-            'ignore_errors' => true,
         ],
-        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
-    ]);
+        [
+            'url'     => rtrim($apiBase, '/') . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
+            'header'  => "Accept: application/json\r\nX-Domain: {$domain}\r\n",
+        ],
+    ];
 
-    $body = @file_get_contents($url, false, $ctx);
-    if ($body === false) {
-        $fallbackUrl = rtrim($apiBase, '/') . '/api/public' . $apiPath . '?locale=' . urlencode($locale);
-        $ctxFallback = stream_context_create([
+    $data = null;
+    foreach ($urls as $attempt) {
+        $ctx = stream_context_create([
             'http' => [
-                'method'  => 'GET',
-                'header'  => "Accept: application/json\r\nX-Domain: {$domain}\r\n",
-                'timeout' => 5,
+                'method'        => 'GET',
+                'header'        => $attempt['header'],
+                'timeout'       => 5,
                 'ignore_errors' => true,
             ],
-            'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+            'ssl' => $sslOpts,
         ]);
-        $body = @file_get_contents($fallbackUrl, false, $ctxFallback);
+
+        $body = @file_get_contents($attempt['url'], false, $ctx);
+
+        $status = httpStatusFromHeaders($http_response_header ?? []);
+
+        if ($body === false || $status >= 400) {
+            continue;
+        }
+
+        $parsed = json_decode($body, true);
+        if (is_array($parsed) && !isset($parsed['message'])) {
+            $data = $parsed;
+            break;
+        }
     }
 
-    if ($body === false) return null;
-
-    $data = json_decode($body, true);
-    if (!is_array($data)) return null;
+    if (!$data) return null;
 
     if (!is_dir($cacheDir)) {
         @mkdir($cacheDir, 0755, true);
@@ -151,6 +168,16 @@ function fetchCmsData(string $apiBase, string $domain, string $apiPath, string $
     @file_put_contents($cacheFile, json_encode($data), LOCK_EX);
 
     return $data;
+}
+
+function httpStatusFromHeaders(array $headers): int
+{
+    foreach ($headers as $h) {
+        if (preg_match('#^HTTP/[\d.]+\s+(\d{3})#i', $h, $m)) {
+            return (int) $m[1];
+        }
+    }
+    return 0;
 }
 
 function esc(string $s): string
@@ -177,7 +204,7 @@ function buildMetaTags(string $routeType, ?array $data, string $locale, string $
         'keywords'    => '',
     ];
 
-    if (!$data) {
+    if (!$data || (!isset($data['title']) && !isset($data['meta_title']) && !isset($data['content']))) {
         switch ($routeType) {
             case 'blog-list':
                 $tags['title'] = 'Blog';
