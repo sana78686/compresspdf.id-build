@@ -12,10 +12,16 @@
   RewriteEngine On
   RewriteBase /
 
+  # DirectoryIndex maps "/" → "index.html". Without this, the rule below serves the raw Vite shell
+  # (empty <title>) because REQUEST_URI is /index.html, not "/", so the old "except /" guard did not apply.
+  RewriteRule ^$ /seo-prerender.php [L]
+  RewriteRule ^index\.html$ /seo-prerender.php [L]
+
   # Serve real files first — after CMS "push", robots.txt / sitemap.xml on disk win over the live-fetch PHP fallback
-  # Exception: site root "/" must NOT short-circuit to index.html here — we need seo-prerender.php to inject locale meta in view-source.
+  # Never short-circuit the SPA shell: "/" and "/index.html" are handled above.
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteCond %{REQUEST_URI} !^/?$
+  RewriteCond %{REQUEST_URI} !^/index\.html$
   RewriteRule . - [L]
 
   # No file yet: pull live from CMS (optional)
