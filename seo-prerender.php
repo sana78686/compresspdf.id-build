@@ -15,6 +15,10 @@
  * View-source vs React: client-only meta (Helmet after load) updates DevTools
  * Elements but not view-source. This script runs on the server and injects meta
  * into the HTML shell so view-source and crawlers see the same tags per URL.
+ *
+ * Server config: Apache must route SPA routes to this file (see public/.htaccess).
+ * On Nginx, use try_files + fastcgi_pass to this script for non-file requests so
+ * the HTML is always processed here (otherwise View Source stays the raw Vite shell).
  */
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -192,22 +196,8 @@ function fetchCmsData($apiBase, $domain, $apiPath, $locale, $cacheDir, $ttl, $pu
 
     $data = null;
     foreach ($urls as $attempt) {
-        $ctx = stream_context_create(array(
-            'http' => array(
-                'method'        => 'GET',
-                'header'        => $attempt['header'],
-                'timeout'       => 5,
-                'ignore_errors' => true,
-            ),
-            'ssl' => array('verify_peer' => true, 'verify_peer_name' => true),
-        ));
-
-        $http_response_header = array();
-        $body = @file_get_contents($attempt['url'], false, $ctx);
-
-        $status = httpStatusFromHeaders($http_response_header);
-
-        if ($body === false || $status >= 400) {
+        $body = fetchUrlBody($attempt['url'], $attempt['header']);
+        if ($body === null || $body === '') {
             continue;
         }
 
@@ -226,6 +216,64 @@ function fetchCmsData($apiBase, $domain, $apiPath, $locale, $cacheDir, $ttl, $pu
     @file_put_contents($cacheFile, json_encode($data), LOCK_EX);
 
     return $data;
+}
+
+/**
+ * GET JSON from CMS API — file_get_contents first, then cURL (many hosts block allow_url_fopen or break $http_response_header).
+ *
+ * @return string|null Raw body or null on failure
+ */
+function fetchUrlBody($url, $headerBlock)
+{
+    $ctx = stream_context_create(array(
+        'http' => array(
+            'method'        => 'GET',
+            'header'        => $headerBlock,
+            'timeout'       => 8,
+            'ignore_errors' => true,
+        ),
+        'ssl' => array('verify_peer' => true, 'verify_peer_name' => true),
+    ));
+
+    $body = @file_get_contents($url, false, $ctx);
+    if ($body !== false && $body !== '') {
+        return (string) $body;
+    }
+
+    if (!function_exists('curl_init')) {
+        return null;
+    }
+
+    $lines = preg_split('/\r\n|\r|\n/', trim($headerBlock));
+    $curlHeaders = array();
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line !== '') {
+            $curlHeaders[] = $line;
+        }
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, array(
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_HTTPHEADER     => $curlHeaders,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+    ));
+    $curlBody = curl_exec($ch);
+    $curlCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($curlBody === false || $curlBody === '') {
+        return null;
+    }
+    if ($curlCode >= 400) {
+        return null;
+    }
+
+    return (string) $curlBody;
 }
 
 function httpStatusFromHeaders($headers)
@@ -279,7 +327,8 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
     );
 
     $hasPayload = is_array($data) && (
-        isset($data['title']) || isset($data['meta_title']) || isset($data['content'])
+        (isset($data['json_ld']) && is_array($data['json_ld']))
+        || isset($data['title']) || isset($data['meta_title']) || isset($data['content'])
         || ($routeType === 'blog-list' && isset($data['blogs']))
         || ($routeType === 'contact' && array_key_exists('contact_email', $data))
         || $routeType === 'tools'
@@ -287,6 +336,29 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
 
     if (!$data || !$hasPayload) {
         switch ($routeType) {
+            case 'home':
+                $tags['title'] = 'Compress PDF';
+                $tags['description'] = '';
+                $tags['og_title'] = $tags['title'];
+                $tags['og_desc'] = $tags['description'];
+                $tags['twitter_card'] = !empty($tags['og_image']) ? 'summary_large_image' : 'summary';
+                return $tags;
+            case 'blog':
+            case 'page':
+                $tags['title'] = 'Compress PDF';
+                $tags['description'] = '';
+                $tags['robots'] = 'noindex, follow';
+                $tags['og_title'] = $tags['title'];
+                $tags['og_desc'] = $tags['description'];
+                $tags['twitter_card'] = !empty($tags['og_image']) ? 'summary_large_image' : 'summary';
+                return $tags;
+            case 'legal':
+                $tags['title'] = 'Legal';
+                $tags['description'] = '';
+                $tags['og_title'] = $tags['title'];
+                $tags['og_desc'] = $tags['description'];
+                $tags['twitter_card'] = !empty($tags['og_image']) ? 'summary_large_image' : 'summary';
+                return $tags;
             case 'blog-list':
                 $tags['title'] = 'Blog';
                 $tags['description'] = 'Latest articles and guides.';
@@ -499,8 +571,16 @@ function injectMetaIntoHtml($html, $tags)
 {
     $html = stripShellSeoDuplicates($html);
 
+    if (trim((string) (isset($tags['title']) ? $tags['title'] : '')) === '') {
+        $tags['title'] = 'Compress PDF';
+    }
+
     $title = esc($tags['title']);
-    $html = preg_replace('/<title\s*>[\s\S]*?<\/title>/i', '<title>' . $title . '</title>', $html, 1);
+    if (preg_match('/<title\s*>[\s\S]*?<\/title>/i', $html)) {
+        $html = preg_replace('/<title\s*>[\s\S]*?<\/title>/i', '<title>' . $title . '</title>', $html, 1);
+    } else {
+        $html = preg_replace('/<head[^>]*>/i', '$0' . "\n    " . '<title>' . $title . '</title>', $html, 1);
+    }
 
     $inject = array();
     if (!empty($tags['head_snippet'])) {
@@ -569,13 +649,17 @@ function injectMetaIntoHtml($html, $tags)
             $ldJson = (string) $ld;
         }
         if ($ldJson !== '') {
-            $inject[] = '<script type="application/ld+json">' . $ldJson . '</script>';
+            $inject[] = '<script type="application/ld+json" data-cms-seo-prerender="1">' . $ldJson . '</script>';
         }
     }
 
     if (!empty($inject)) {
         $block = '    ' . implode("\n    ", $inject);
-        $html = str_replace('</head>', $block . "\n  </head>", $html);
+        if (stripos($html, '</head>') !== false) {
+            $html = str_replace('</head>', $block . "\n  </head>", $html);
+        } else {
+            $html = preg_replace('/<head[^>]*>/i', '$0' . "\n" . $block . "\n", $html, 1);
+        }
     }
 
     return $html;
