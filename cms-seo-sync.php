@@ -1,6 +1,6 @@
 <?php
 /**
- * Receives robots.txt / sitemap.xml from the Global CMS (POST) and writes them next to this file
+ * Receives robots.txt / sitemap.xml / cms-home-seo.json from the Global CMS (POST) and writes them next to this file
  * (public web root). Set the same secret as FRONTEND_SEO_SYNC_SECRET in the CMS .env:
  *   SetEnv CMS_SEO_SYNC_SECRET "your-long-random-string"
  * or in .htaccess / hosting panel.
@@ -35,7 +35,7 @@ if (! hash_equals($expected, $secret)) {
     exit;
 }
 
-if ($action !== 'robots' && $action !== 'sitemap') {
+if ($action !== 'robots' && $action !== 'sitemap' && $action !== 'home_seo') {
     http_response_code(400);
     echo json_encode(['ok' => false, 'message' => 'Invalid action']);
     exit;
@@ -48,7 +48,23 @@ if (strlen($content) > $maxBytes) {
     exit;
 }
 
-$file = $action === 'robots' ? 'robots.txt' : 'sitemap.xml';
+if ($action === 'home_seo') {
+    if ($content === '') {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => 'Empty JSON for home_seo']);
+        exit;
+    }
+    json_decode($content, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => 'Invalid JSON for home_seo']);
+        exit;
+    }
+    $file = 'cms-home-seo.json';
+} else {
+    $file = $action === 'robots' ? 'robots.txt' : 'sitemap.xml';
+}
+
 $path = __DIR__ . DIRECTORY_SEPARATOR . $file;
 
 if (@file_put_contents($path, $content) === false) {
