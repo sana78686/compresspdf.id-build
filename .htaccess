@@ -1,3 +1,9 @@
+# CMS push — cms-seo-sync.php reads this. Must match FRONTEND_SEO_SYNC_SECRET in Global CMS .env.
+# Replace your-secret-here with your real random string on the server (avoid committing real secrets to git).
+<IfModule mod_env.c>
+  SetEnv CMS_SEO_SYNC_SECRET "Seosyncsecret123@"
+</IfModule>
+
 # SPA fallback with SEO prerender.
 # Static files (JS, CSS, images, fonts) are served directly by Apache.
 # All other requests go through seo-prerender.php which injects correct
