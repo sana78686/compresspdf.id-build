@@ -6,9 +6,15 @@
   RewriteEngine On
   RewriteBase /
 
-  # Serve real files directly (JS, CSS, images, fonts, etc.)
+  # Serve real files first — after CMS "push", robots.txt / sitemap.xml on disk win over the live-fetch PHP fallback
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule . - [L]
+
+  # No file yet: pull live from CMS (optional)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^robots\.txt$ /robots-cms.php [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^sitemap\.xml$ /sitemap-cms.php [L]
 
   # Serve real directories directly
   RewriteCond %{REQUEST_FILENAME} -d
