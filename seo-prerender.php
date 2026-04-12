@@ -126,7 +126,11 @@ switch ($routeType) {
 // ── Fetch CMS data (per URL + locale; cached briefly) ─────────────────────
 $meta = null;
 if ($apiPath !== '') {
-    $meta = fetchCmsData($CMS_API_BASE, $SITE_DOMAIN, $apiPath, $locale, $CACHE_DIR, $CACHE_TTL);
+    $publicPathForApi = null;
+    if ($apiPath === '/home-content' || $apiPath === '/schema/tool') {
+        $publicPathForApi = $path;
+    }
+    $meta = fetchCmsData($CMS_API_BASE, $SITE_DOMAIN, $apiPath, $locale, $CACHE_DIR, $CACHE_TTL, $publicPathForApi);
 }
 
 // ── Debug mode ──────────────────────────────────────────────────────────────
@@ -159,9 +163,10 @@ exit;
 // Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
-function fetchCmsData($apiBase, $domain, $apiPath, $locale, $cacheDir, $ttl)
+function fetchCmsData($apiBase, $domain, $apiPath, $locale, $cacheDir, $ttl, $publicPath = null)
 {
-    $cacheKey = md5($domain . $apiPath . $locale);
+    $pathKey = ($publicPath !== null && $publicPath !== '') ? (string) $publicPath : '';
+    $cacheKey = md5($domain . $apiPath . $locale . $pathKey);
     $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
 
     if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $ttl) {
@@ -169,13 +174,18 @@ function fetchCmsData($apiBase, $domain, $apiPath, $locale, $cacheDir, $ttl)
         if (is_array($cached) && !isset($cached['_fetch_error'])) return $cached;
     }
 
+    $query = 'locale=' . urlencode($locale);
+    if ($publicPath !== null && $publicPath !== '') {
+        $query .= '&public_path=' . urlencode($publicPath);
+    }
+
     $urls = array(
         array(
-            'url'    => rtrim($apiBase, '/') . '/' . $domain . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
+            'url'    => rtrim($apiBase, '/') . '/' . $domain . '/api/public' . $apiPath . '?' . $query,
             'header' => "Accept: application/json\r\n",
         ),
         array(
-            'url'    => rtrim($apiBase, '/') . '/api/public' . $apiPath . '?locale=' . urlencode($locale),
+            'url'    => rtrim($apiBase, '/') . '/api/public' . $apiPath . '?' . $query,
             'header' => "Accept: application/json\r\nX-Domain: {$domain}\r\n",
         ),
     );
@@ -338,6 +348,9 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
                 $tags['og_title'] = $tags['title'];
                 $tags['og_desc'] = $tags['description'];
             }
+            if (!empty($data['json_ld'])) {
+                $tags['json_ld'] = $data['json_ld'];
+            }
             break;
 
         case 'contact':
@@ -358,6 +371,9 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
             $tags['description'] = $bits ? implode(' · ', $bits) : 'Get in touch.';
             $tags['og_title'] = $tags['title'];
             $tags['og_desc'] = $tags['description'];
+            if (!empty($data['json_ld'])) {
+                $tags['json_ld'] = $data['json_ld'];
+            }
             break;
 
         case 'tools':
@@ -444,6 +460,9 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
             }
             $tags['og_title'] = $tags['title'];
             $tags['og_desc']  = $tags['description'];
+            if (!empty($data['json_ld'])) {
+                $tags['json_ld'] = $data['json_ld'];
+            }
             break;
     }
 
