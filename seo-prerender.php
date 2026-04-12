@@ -11,6 +11,10 @@
  *
  * Place in the same directory as index.html. Apache .htaccess routes non-file
  * requests here instead of directly to index.html.
+ *
+ * View-source vs React: client-only meta (Helmet after load) updates DevTools
+ * Elements but not view-source. This script runs on the server and injects meta
+ * into the HTML shell so view-source and crawlers see the same tags per URL.
  */
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -47,7 +51,7 @@ if (preg_match('#^/([a-z]{2})(?:/(.*))?$#', $path, $m) && isset($m[1]) && $m[1] 
     $routeSuffix = '/' . (isset($m[1]) ? $m[1] : '');
 }
 
-$routeType = 'home';
+$routeType = null;
 $slug      = '';
 
 if (preg_match('#^/blog/([^/?]+)#', $routeSuffix, $m)) {
@@ -64,11 +68,31 @@ if (preg_match('#^/blog/([^/?]+)#', $routeSuffix, $m)) {
 } elseif (preg_match('#^/contact#', $routeSuffix)) {
     $routeType = 'contact';
 } elseif (preg_match('#^/compress#', $routeSuffix)) {
-    $routeType = 'tool';
+    // Same React route as home (compressor); must use home-content SEO, not generic "tool" fallbacks.
+    $routeType = 'home';
 } elseif (preg_match('#^/tools#', $routeSuffix)) {
     $routeType = 'tools';
 } elseif ($routeSuffix === '/' || $routeSuffix === '') {
     $routeType = 'home';
+}
+
+// /en/merge, /split, … — ComingSoon routes (not home SEO).
+// /page, /legal without slug — not valid CMS URLs; avoid serving home meta on wrong URLs.
+if ($routeType === null) {
+    if ($routeSuffix === '/' || $routeSuffix === '') {
+        $routeType = 'home';
+    } elseif (preg_match('#^/([a-z0-9-]+)/?$#', $routeSuffix, $m)) {
+        $seg = $m[1];
+        $reserved = array('blog', 'page', 'legal', 'contact', 'compress', 'tools', 'id');
+        if (!in_array($seg, $reserved, true)) {
+            $routeType = 'tool-landing';
+            $slug = $seg;
+        } else {
+            $routeType = 'spa-other';
+        }
+    } else {
+        $routeType = 'home';
+    }
 }
 
 // ── Build API URL ───────────────────────────────────────────────────────────
@@ -80,17 +104,26 @@ switch ($routeType) {
     case 'blog':
         $apiPath = '/blogs/' . rawurlencode($slug);
         break;
+    case 'blog-list':
+        $apiPath = '/blogs';
+        break;
     case 'page':
         $apiPath = '/pages/' . rawurlencode($slug);
         break;
     case 'legal':
         $apiPath = '/legal/' . rawurlencode($slug);
         break;
+    case 'contact':
+        $apiPath = '/contact';
+        break;
+    case 'tools':
+        $apiPath = '/schema/tool';
+        break;
     default:
         $apiPath = '';
 }
 
-// ── Fetch CMS data ─────────────────────────────────────────────────────────
+// ── Fetch CMS data (per URL + locale; cached briefly) ─────────────────────
 $meta = null;
 if ($apiPath !== '') {
     $meta = fetchCmsData($CMS_API_BASE, $SITE_DOMAIN, $apiPath, $locale, $CACHE_DIR, $CACHE_TTL);
@@ -230,9 +263,19 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
         'article_published'  => '',
         'article_modified'   => '',
         'article_author'     => '',
+        'twitter_card'       => 'summary',
+        'json_ld'            => null,
+        'head_snippet'       => '',
     );
 
-    if (!$data || (!isset($data['title']) && !isset($data['meta_title']) && !isset($data['content']))) {
+    $hasPayload = is_array($data) && (
+        isset($data['title']) || isset($data['meta_title']) || isset($data['content'])
+        || ($routeType === 'blog-list' && isset($data['blogs']))
+        || ($routeType === 'contact' && array_key_exists('contact_email', $data))
+        || $routeType === 'tools'
+    );
+
+    if (!$data || !$hasPayload) {
         switch ($routeType) {
             case 'blog-list':
                 $tags['title'] = 'Blog';
@@ -240,17 +283,25 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
                 break;
             case 'contact':
                 $tags['title'] = 'Contact Us';
-                break;
-            case 'tool':
-                $tags['title'] = 'Compress PDF';
-                $tags['description'] = 'Compress PDF files online for free.';
+                $tags['description'] = 'Get in touch.';
                 break;
             case 'tools':
                 $tags['title'] = 'All Tools';
+                $tags['description'] = 'PDF tools and utilities.';
+                break;
+            case 'tool-landing':
+                $tags['title'] = 'Compress PDF';
+                $tags['description'] = 'PDF tools online.';
+                break;
+            case 'spa-other':
+                $tags['title'] = 'Compress PDF';
+                $tags['description'] = '';
+                $tags['robots'] = 'noindex, follow';
                 break;
         }
         $tags['og_title'] = $tags['title'];
         $tags['og_desc']  = $tags['description'];
+        $tags['twitter_card'] = !empty($tags['og_image']) ? 'summary_large_image' : 'summary';
         return $tags;
     }
 
@@ -266,6 +317,80 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
             if (!empty($data['canonical_url'])) {
                 $tags['canonical'] = trim($data['canonical_url']);
             }
+            if (!empty($data['json_ld'])) {
+                $tags['json_ld'] = $data['json_ld'];
+            }
+            if (!empty($data['head_snippet'])) {
+                $tags['head_snippet'] = (string) $data['head_snippet'];
+            }
+            break;
+
+        case 'blog-list':
+            $tags['title'] = 'Blog';
+            $tags['description'] = 'Latest articles and guides.';
+            if (!empty($data['blogs']) && is_array($data['blogs']) && isset($data['blogs'][0]) && is_array($data['blogs'][0])) {
+                $b0 = $data['blogs'][0];
+                $tags['og_title'] = trim(g($b0, 'og_title') ?: g($b0, 'title')) ?: $tags['title'];
+                $tags['og_desc'] = trim(g($b0, 'og_description') ?: g($b0, 'excerpt')) ?: $tags['description'];
+                $tags['og_image'] = trim(g($b0, 'og_image') ?: g($b0, 'image'));
+                $tags['description'] = $tags['og_desc'] ?: $tags['description'];
+            } else {
+                $tags['og_title'] = $tags['title'];
+                $tags['og_desc'] = $tags['description'];
+            }
+            break;
+
+        case 'contact':
+            $tags['title'] = 'Contact Us';
+            $bits = array();
+            $e = trim(g($data, 'contact_email'));
+            $p = trim(g($data, 'contact_phone'));
+            $a = trim(g($data, 'contact_address'));
+            if ($e !== '') {
+                $bits[] = $e;
+            }
+            if ($p !== '') {
+                $bits[] = $p;
+            }
+            if ($a !== '') {
+                $bits[] = $a;
+            }
+            $tags['description'] = $bits ? implode(' · ', $bits) : 'Get in touch.';
+            $tags['og_title'] = $tags['title'];
+            $tags['og_desc'] = $tags['description'];
+            break;
+
+        case 'tools':
+            $tags['title'] = 'All Tools';
+            $tags['description'] = 'Browse PDF tools: compress, merge, split, and more.';
+            $tags['og_title'] = $tags['title'];
+            $tags['og_desc'] = $tags['description'];
+            if (!empty($data['json_ld'])) {
+                $tags['json_ld'] = $data['json_ld'];
+            }
+            break;
+
+        case 'tool-landing':
+            $pretty = trim(str_replace(array('-', '_'), ' ', $slug));
+            if ($pretty !== '') {
+                $pretty = function_exists('mb_convert_case')
+                    ? mb_convert_case($pretty, MB_CASE_TITLE, 'UTF-8')
+                    : ucwords(strtolower($pretty));
+            } else {
+                $pretty = 'Tools';
+            }
+            $tags['title'] = $pretty . ' · ' . $tags['og_site_name'];
+            $tags['description'] = $pretty . ' — PDF tool. ' . $tags['og_site_name'] . '.';
+            $tags['og_title'] = $tags['title'];
+            $tags['og_desc'] = $tags['description'];
+            break;
+
+        case 'spa-other':
+            $tags['title'] = $tags['og_site_name'];
+            $tags['description'] = '';
+            $tags['robots'] = 'noindex, follow';
+            $tags['og_title'] = $tags['title'];
+            $tags['og_desc'] = $tags['description'];
             break;
 
         case 'blog':
@@ -288,6 +413,9 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
             if (!empty($data['canonical_url'])) {
                 $tags['canonical'] = trim($data['canonical_url']);
             }
+            if (!empty($data['json_ld'])) {
+                $tags['json_ld'] = $data['json_ld'];
+            }
             break;
 
         case 'page':
@@ -303,6 +431,9 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
             $tags['og_image']    = trim(g($data,'og_image'));
             if (!empty($data['canonical_url'])) {
                 $tags['canonical'] = trim($data['canonical_url']);
+            }
+            if (!empty($data['json_ld'])) {
+                $tags['json_ld'] = $data['json_ld'];
             }
             break;
 
@@ -320,51 +451,108 @@ function buildMetaTags($routeType, $data, $locale, $origin, $path)
     if (!$tags['description'] && $tags['og_desc']) $tags['description'] = $tags['og_desc'];
     if (!$tags['og_desc'] && $tags['description']) $tags['og_desc'] = $tags['description'];
 
+    $tags['twitter_card'] = !empty($tags['og_image']) ? 'summary_large_image' : 'summary';
+
     return $tags;
+}
+
+function stripShellSeoDuplicates($html)
+{
+    $html = preg_replace('/<script\s+type=["\']application\/ld\+json["\'][^>]*>[\s\S]*?<\/script>/i', '', $html);
+    $patterns = array(
+        '/<meta\s+name=["\']robots["\'][^>]*>/i',
+        '/<meta\s+name=["\']title["\'][^>]*>/i',
+        '/<meta\s+name=["\']description["\'][^>]*>/i',
+        '/<meta\s+name=["\']keywords["\'][^>]*>/i',
+        '/<meta\s+property=["\']og:[^"\']+["\'][^>]*>/i',
+        '/<meta\s+name=["\']twitter:[^"\']+["\'][^>]*>/i',
+        '/<meta\s+property=["\']article:[^"\']+["\'][^>]*>/i',
+        '/<link\s+rel=["\']canonical["\'][^>]*>/i',
+        '/<link\s+rel=["\']alternate["\'][^>]*hreflang[^>]*>/i',
+    );
+    foreach ($patterns as $p) {
+        $html = preg_replace($p, '', $html);
+    }
+    return $html;
 }
 
 function injectMetaIntoHtml($html, $tags)
 {
+    $html = stripShellSeoDuplicates($html);
+
     $title = esc($tags['title']);
-    $html = preg_replace('/<title>[^<]*<\/title>/', '<title>' . $title . '</title>', $html);
-
-    $robotsEsc = esc($tags['robots']);
-    $html = preg_replace(
-        '/<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/',
-        '<meta name="robots" content="' . $robotsEsc . '" />',
-        $html
-    );
-
-    $ogTypeEsc = esc($tags['og_type']);
-    $html = preg_replace(
-        '/<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/',
-        '<meta property="og:type" content="' . $ogTypeEsc . '" />',
-        $html
-    );
+    $html = preg_replace('/<title\s*>[\s\S]*?<\/title>/i', '<title>' . $title . '</title>', $html, 1);
 
     $inject = array();
-    if ($tags['title'])       $inject[] = '<meta name="title" content="' . esc($tags['title']) . '" />';
-    if ($tags['description']) $inject[] = '<meta name="description" content="' . esc($tags['description']) . '" />';
-    if ($tags['keywords'])    $inject[] = '<meta name="keywords" content="' . esc($tags['keywords']) . '" />';
-    if ($tags['canonical'])   $inject[] = '<link rel="canonical" href="' . esc($tags['canonical']) . '" />';
+    if (!empty($tags['head_snippet'])) {
+        $inject[] = $tags['head_snippet'];
+    }
 
-    // OG tags
-    if ($tags['og_title'])    $inject[] = '<meta property="og:title" content="' . esc($tags['og_title']) . '" />';
-    if ($tags['og_desc'])     $inject[] = '<meta property="og:description" content="' . esc($tags['og_desc']) . '" />';
-    if ($tags['og_image'])    $inject[] = '<meta property="og:image" content="' . esc($tags['og_image']) . '" />';
+    $inject[] = '<meta name="robots" content="' . esc($tags['robots']) . '" />';
+    if ($tags['title']) {
+        $inject[] = '<meta name="title" content="' . esc($tags['title']) . '" />';
+    }
+    if ($tags['description']) {
+        $inject[] = '<meta name="description" content="' . esc($tags['description']) . '" />';
+    }
+    if ($tags['keywords']) {
+        $inject[] = '<meta name="keywords" content="' . esc($tags['keywords']) . '" />';
+    }
+    if (!empty($tags['canonical'])) {
+        $inject[] = '<link rel="canonical" href="' . esc($tags['canonical']) . '" />';
+    }
+
+    $inject[] = '<meta property="og:type" content="' . esc($tags['og_type']) . '" />';
+    if ($tags['og_title']) {
+        $inject[] = '<meta property="og:title" content="' . esc($tags['og_title']) . '" />';
+    }
+    if ($tags['og_desc']) {
+        $inject[] = '<meta property="og:description" content="' . esc($tags['og_desc']) . '" />';
+    }
+    if ($tags['og_image']) {
+        $inject[] = '<meta property="og:image" content="' . esc($tags['og_image']) . '" />';
+    }
     $inject[] = '<meta property="og:url" content="' . esc($tags['canonical']) . '" />';
-    if (!empty($tags['og_site_name'])) $inject[] = '<meta property="og:site_name" content="' . esc($tags['og_site_name']) . '" />';
-    if (!empty($tags['og_locale']))    $inject[] = '<meta property="og:locale" content="' . esc($tags['og_locale']) . '" />';
+    if (!empty($tags['og_site_name'])) {
+        $inject[] = '<meta property="og:site_name" content="' . esc($tags['og_site_name']) . '" />';
+    }
+    if (!empty($tags['og_locale'])) {
+        $inject[] = '<meta property="og:locale" content="' . esc($tags['og_locale']) . '" />';
+    }
 
-    // Article-specific
-    if (!empty($tags['article_published'])) $inject[] = '<meta property="article:published_time" content="' . esc($tags['article_published']) . '" />';
-    if (!empty($tags['article_modified']))  $inject[] = '<meta property="article:modified_time" content="' . esc($tags['article_modified']) . '" />';
-    if (!empty($tags['article_author']))    $inject[] = '<meta property="article:author" content="' . esc($tags['article_author']) . '" />';
+    if (!empty($tags['article_published'])) {
+        $inject[] = '<meta property="article:published_time" content="' . esc($tags['article_published']) . '" />';
+    }
+    if (!empty($tags['article_modified'])) {
+        $inject[] = '<meta property="article:modified_time" content="' . esc($tags['article_modified']) . '" />';
+    }
+    if (!empty($tags['article_author'])) {
+        $inject[] = '<meta property="article:author" content="' . esc($tags['article_author']) . '" />';
+    }
 
-    // Twitter tags
-    if ($tags['og_title'])    $inject[] = '<meta name="twitter:title" content="' . esc($tags['og_title']) . '" />';
-    if ($tags['og_desc'])     $inject[] = '<meta name="twitter:description" content="' . esc($tags['og_desc']) . '" />';
-    if ($tags['og_image'])    $inject[] = '<meta name="twitter:image" content="' . esc($tags['og_image']) . '" />';
+    $twCard = !empty($tags['twitter_card']) ? $tags['twitter_card'] : 'summary';
+    $inject[] = '<meta name="twitter:card" content="' . esc($twCard) . '" />';
+    if ($tags['og_title']) {
+        $inject[] = '<meta name="twitter:title" content="' . esc($tags['og_title']) . '" />';
+    }
+    if ($tags['og_desc']) {
+        $inject[] = '<meta name="twitter:description" content="' . esc($tags['og_desc']) . '" />';
+    }
+    if ($tags['og_image']) {
+        $inject[] = '<meta name="twitter:image" content="' . esc($tags['og_image']) . '" />';
+    }
+
+    if (!empty($tags['json_ld'])) {
+        $ld = $tags['json_ld'];
+        if (is_array($ld)) {
+            $ldJson = json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        } else {
+            $ldJson = (string) $ld;
+        }
+        if ($ldJson !== '') {
+            $inject[] = '<script type="application/ld+json">' . $ldJson . '</script>';
+        }
+    }
 
     if (!empty($inject)) {
         $block = '    ' . implode("\n    ", $inject);
