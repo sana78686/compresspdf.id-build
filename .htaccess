@@ -13,7 +13,9 @@
   RewriteBase /
 
   # Serve real files first — after CMS "push", robots.txt / sitemap.xml on disk win over the live-fetch PHP fallback
+  # Exception: site root "/" must NOT short-circuit to index.html here — we need seo-prerender.php to inject locale meta in view-source.
   RewriteCond %{REQUEST_FILENAME} -f
+  RewriteCond %{REQUEST_URI} !^/?$
   RewriteRule . - [L]
 
   # No file yet: pull live from CMS (optional)
@@ -22,8 +24,9 @@
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^sitemap\.xml$ /sitemap-cms.php [L]
 
-  # Serve real directories directly
+  # Serve real directories directly (but not document root — otherwise "/" stops here and never hits seo-prerender.php)
   RewriteCond %{REQUEST_FILENAME} -d
+  RewriteCond %{REQUEST_URI} !^/?$
   RewriteRule . - [L]
 
   # Everything else → PHP prerender (injects CMS meta into index.html)
